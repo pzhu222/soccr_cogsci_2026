@@ -1,0 +1,323 @@
+---
+title: "soccr_cogsci_2026_analyses"
+output: html_document
+date: "2026-02-03"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+set.seed(123)
+
+required_packages <- c("tidyverse", "here", "rstanarm", "bridgesampling")
+
+install_if_missing <- function(packages) {
+  for (pkg in packages) {
+    if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
+      message(paste("Installing package:", pkg))
+      install.packages(pkg, dependencies = TRUE)
+      library(pkg, character.only = TRUE)
+    }
+  }
+}
+
+install_if_missing(required_packages)
+
+```
+
+# Experiment 1
+
+## Load and clean data
+
+```{r}
+df.soccr_study1_raw <- read.csv(here("data/soccr_study1.csv"), header = T)
+
+df.soccr_study1 <- df.soccr_study1_raw |> 
+  filter(exclude. == 0) |> 
+  mutate(condition = ifelse(Condition == 0, "Miss", "Almost")) |> 
+  select(condition,
+         choice = Choice,
+         id,
+         age)
+
+df.soccr_study1 |> 
+  group_by(condition, choice) |>  
+  summarize(n = n())
+
+```
+
+## Mean and sd of age, and look at exclusions
+
+```{r}
+
+mean_age <- mean(df.soccr_study1$age, na.rm = TRUE)
+
+sd_age <- sd(df.soccr_study1$age, na.rm = TRUE)
+
+# Print mean and sd of age
+cat("Mean age:", mean_age, "\n")
+cat("Standard deviation of age:", sd_age, "\n")
+
+# Check exclusions
+df.soccr_study1_raw |> 
+  filter(exclude. == 1) |> 
+  group_by(exclude_reason) |> 
+  summarize(n = n())
+
+```
+
+## Analyze Data
+
+```{r}
+
+soccr_study1_model_full <-
+  stan_glm(
+    choice ~ condition,
+    data = df.soccr_study1,
+    family = binomial,
+    refresh = 0,
+    diagnostic_file = here("diagnostic_files", "diag_file_full_soccr_study1.csv"))
+
+soccr_study1_model_null <-
+  stan_glm(
+    choice ~ 1,
+    data = df.soccr_study1,
+    family = binomial,
+    refresh = 0,
+    diagnostic_file = here("diagnostic_files", "diag_file_null_soccr_study1.csv"))
+
+bridge_full_soccr_study1 <- bridge_sampler(soccr_study1_model_full)
+
+bridge_null_soccr_study1 <- bridge_sampler(soccr_study1_model_null)
+
+bayes_factor(bridge_full_soccr_study1, bridge_null_soccr_study1)$bf
+
+```
+## Correlation coefficients and credible intervals
+
+```{r}
+
+summary(soccr_study1_model_full, digits = 3)
+posterior_interval(soccr_study1_model_full, prob = 0.95)
+
+coef(soccr_study1_model_full)
+
+```
+## Age effects
+
+```{r}
+
+soccr_study1_model_age_nointeraction <-
+  stan_glm(
+    choice ~ condition + age,
+    data = df.soccr_study1,
+    family = binomial,
+    refresh = 0,
+    diagnostic_file = here("diagnostic_files", "diag_file_age_nointeraction_soccr_study1.csv")
+  )
+
+soccr_study1_model_interaction <-
+  stan_glm(
+    choice ~ condition * age,
+    data = df.soccr_study1,
+    family = binomial,
+    refresh = 0,
+    diagnostic_file = here("diagnostic_files", "diag_file_interaction_soccr_study1.csv")
+  )
+
+summary(soccr_study1_model_interaction)
+coef(soccr_study1_model_interaction)
+posterior_interval(soccr_study1_model_interaction, prob = 0.95)
+
+bridge_age_nointeraction <- bridge_sampler(soccr_study1_model_age_nointeraction)
+
+bridge_interaction <- bridge_sampler(soccr_study1_model_interaction)
+
+bayes_factor(bridge_interaction, bridge_age_nointeraction)
+
+```
+
+## Plot
+
+```{r}
+
+custom_colors <- c("Almost" = "#56C1FF", "Miss" = "#FF8A5B")
+
+p.soccr1 <- ggplot(data = df.soccr_study1, 
+                             aes(x = condition, 
+                                 y = choice*100, 
+                                 color = condition)) +
+  stat_summary(
+    geom = "pointrange",
+    fun.data = "mean_cl_boot",
+    size = 3,
+    linewidth = 3) +
+  theme_classic(base_family = "Noto Sans Korean", 
+                base_size = 32) +
+  labs(x = "", y = "Percent Choosing Same Game") +
+  scale_x_discrete(breaks = c("Condition", "Choice")) +
+  scale_y_continuous(limits = c(0,100), breaks = seq(0,100,25)) +
+  scale_color_manual(values = custom_colors) +
+  theme(legend.position = "none", 
+        axis.title.x = element_text(size = 30),  
+    axis.title.y = element_text(size = 28,
+                                margin = margin(r = 10)),  
+    axis.text.x = element_text(size = 28),
+    axis.text.y = element_text(size = 28)) +
+  scale_x_discrete(labels = c("Almost" = "Almost", "Miss" = "Miss"))
+
+ggsave(here("figs", "soccr1_plot.jpg"), 
+       plot = p.soccr1, 
+       width = 9, height = 8, dpi = 300, 
+       device = "jpg", 
+       units = "in")
+
+```
+
+# Experiment 2
+
+```{r}
+
+df.soccr_study2_raw <- read.csv(here("data", "soccr_study2.csv"), header = T)
+
+df.soccr_study2 <- df.soccr_study2_raw |> 
+  filter(exclude. == 0) |> 
+  mutate(condition = ifelse(Condition == 0, "Hinder", "Help"),
+         age = as.numeric(age)) |> 
+  select(condition,
+         choice = Choice,
+         id,
+         age)
+
+df.soccr_study2 |> 
+  group_by(condition, choice) |>  
+  summarize(n = n())
+
+```
+
+## Mean and sd of age, and look at exclusions
+
+```{r}
+
+mean_age2 <- mean(df.soccr_study2$age, na.rm = TRUE)
+sd_age2 <- sd(df.soccr_study2$age, na.rm = TRUE)
+# Print mean and sd of age
+cat("Mean age:", mean_age2, "\n")
+cat("Standard deviation of age:", sd_age2, "\n")
+# Check exclusions
+df.soccr_study2_raw |> 
+  filter(exclude. == 1) |> 
+  group_by(exclude_reason) |> 
+  summarize(n = n())
+
+```
+
+## Analyze Data
+
+```{r}
+
+soccr_study2_model_full <-
+  stan_glm(
+    choice ~ condition,
+    data = df.soccr_study2,
+    family = binomial,
+    refresh = 0,
+    diagnostic_file = here("diagnostic_files", "diag_file_full_soccr_study2.csv")
+  )
+
+soccr_study2_model_null <-
+  stan_glm(
+    choice ~ 1,
+    data = df.soccr_study2,
+    family = binomial,
+    refresh = 0,
+    diagnostic_file = here("diagnostic_files", "diag_file_null_soccr_study2.csv")
+  )
+
+bridge_full_soccr_study2 <- bridge_sampler(soccr_study2_model_full)
+bridge_null_soccr_study2 <- bridge_sampler(soccr_study2_model_null)
+
+bayes_factor(bridge_full_soccr_study2, bridge_null_soccr_study2)$bf
+
+```
+
+## Correlation coefficients and credible intervals
+
+```{r}
+
+summary(soccr_study2_model_full, digits = 3)
+posterior_interval(soccr_study2_model_full, prob = 0.95)
+coef(soccr_study2_model_full)
+
+```
+
+## Age effects
+
+```{r}
+soccr_study2_model_age_nointeraction <-
+  stan_glm(
+    choice ~ condition + age,
+    data = df.soccr_study2,
+    family = binomial,
+    refresh = 0,
+    diagnostic_file = here("diagnostic_files", "diag_file_age_nointeraction_soccr_study2.csv")
+  )
+
+soccr_study2_model_interaction <-
+  stan_glm(
+    choice ~ condition * age,
+    data = df.soccr_study2,
+    family = binomial,
+    refresh = 0,
+    diagnostic_file = here("diagnostic_files", "diag_file_interaction_soccr_study2.csv")
+  )
+
+summary(soccr_study2_model_interaction)
+coef(soccr_study2_model_interaction)
+posterior_interval(soccr_study2_model_interaction, prob = 0.95)
+
+bridge_age_nointeraction2 <- bridge_sampler(soccr_study2_model_age_nointeraction)
+
+bridge_interaction2 <- bridge_sampler(soccr_study2_model_interaction)
+
+bayes_factor(bridge_interaction2, bridge_age_nointeraction2)
+
+```
+
+## Plot
+
+```{r}
+
+custom_colors2 <- c("Help" = "#56C1FF", "Hinder" = "#FF8A5B")
+
+p.soccr2 <- ggplot(data = df.soccr_study2, 
+                             aes(x = condition, 
+                                 y = choice*100, 
+                                 color = condition)) +
+  stat_summary(
+    geom = "pointrange",
+    fun.data = "mean_cl_boot",
+    size = 3,
+    linewidth = 3) +
+  theme_classic(base_family = "Noto Sans Korean", 
+                base_size = 32) +
+  labs(x = "", y = "Percent Choosing Same Game") +
+  scale_x_discrete(breaks = c("Condition", "Choice")) +
+  scale_y_continuous(limits = c(0,100), breaks = seq(0,100,25)) +
+  scale_color_manual(values = custom_colors2) +
+  theme(legend.position = "none", 
+        axis.title.x = element_text(size = 30),  
+    axis.title.y = element_text(size = 28,
+                                margin = margin(r = 10)),  
+    axis.text.x = element_text(size = 28),
+    axis.text.y = element_text(size = 28)) +
+  scale_x_discrete(labels = c("Help" = "Help", "Hinder" = "Hinder"))
+
+ggsave(here("figs", "soccr2_plot.jpg"), 
+       plot = p.soccr2, 
+       width = 9, height = 8, dpi = 300, 
+       device = "jpg", 
+       units = "in")
+
+```
+
