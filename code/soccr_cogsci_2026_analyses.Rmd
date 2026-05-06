@@ -1,8 +1,6 @@
 ---
 title: "soccr_cogsci_2026_analyses"
-output:
-  html_document:
-    css: soccr_cogsci_2026_html.css
+output: html_document
 date: "2026-02-03"
 ---
 
@@ -303,7 +301,7 @@ p.soccr2 <- ggplot(data = df.soccr_study2,
     linewidth = 3) +
   theme_classic(base_family = "Noto Sans Korean", 
                 base_size = 32) +
-  labs(x = "", y = "Percent Choosing Same Game") +
+  labs(x = "", y = "Percent Keeping Gazorp") +
   scale_x_discrete(breaks = c("Condition", "Choice")) +
   scale_y_continuous(limits = c(0,100), breaks = seq(0,100,25)) +
   scale_color_manual(values = custom_colors2) +
